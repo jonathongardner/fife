@@ -1,0 +1,38 @@
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - 'v*'
+name: release-please
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract Tag Name
+        id: tag
+        run: echo "NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Build go
+        run: |
+          go mod download
+          for os in linux; do
+            for arch in amd64 arm64; do
+              echo -e "$os $arch\n"
+              GOOS=$os GOARCH=$arch go build -o fife-$GOOS-$arch
+            done
+          done
+      - name: Build release file
+        run: git log $(git show HEAD~1:HEAD~2)..HEAD --pretty=format:"- %s (%h)" > release.md
+      - name: Create release
+        run: gh release create $TAG -F release.md ./fife-*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.NAME }}
+        
