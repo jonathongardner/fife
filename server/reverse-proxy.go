@@ -57,7 +57,7 @@ func reverseMuxProxy(cfg config) *http.ServeMux {
 			},
 		).Info("Added proxy")
 		proxies[svr.name] = httputil.NewSingleHostReverseProxy(svr.host)
-		if defProx == nil {
+		if svr.deflt {
 			defProx = proxies[svr.name]
 		}
 	}

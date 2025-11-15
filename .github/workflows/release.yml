@@ -28,8 +28,13 @@ jobs:
               GOOS=$os GOARCH=$arch go build -o fife-$GOOS-$arch
             done
           done
+      - name: Get last version
+        id: last
+        run: echo "VERSION=$(git tag --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-version:refname | head -n 2 | tail -n 1)" >> $GITHUB_OUTPUT
       - name: Build release file
-        run: git log $(git show HEAD~1:HEAD~2)..HEAD --pretty=format:"- %s (%h)" > release.md
+        run: git log $LAST_VERSION..HEAD --pretty=format:"- %s (%h)" > release.md
+        env:
+          LAST_VERSION: ${{ steps.last.VERSION }}
       - name: Create release
         run: gh release create $TAG -F release.md ./fife-*
         env:
