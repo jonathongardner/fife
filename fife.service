@@ -1,0 +1,12 @@
+[Unit]
+Description=Fife reverse proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/fife rp
+Restart=on-failure
+WorkingDirectory=/etc/fife
+
+[Install]
+WantedBy=multi-user.target

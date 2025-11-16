@@ -68,19 +68,31 @@ func reverseMuxProxy(cfg config) *http.ServeMux {
 	// Define the handler function for the reverse proxy
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		host := strings.SplitN(r.Host, ":", 2)[0]
-		logrus.WithFields(logrus.Fields{
+		logger := logrus.WithFields(logrus.Fields{
 			"originalHost": r.Host,
 			"host":         host,
 			"path":         r.URL.Path,
 			"remoteAdd":    r.RemoteAddr,
-		}).Info("request")
+		})
+		logger.Info("request")
 
 		proxy, ok := proxies[host]
-		if !ok {
-			proxy = defProx
+		if ok {
+			logger.Infof("using %s", host)
+			proxy.ServeHTTP(w, r)
+		}
+		if defProx != nil {
+			logger.Info("using default")
+			defProx.ServeHTTP(w, r)
 		}
 
-		proxy.ServeHTTP(w, r)
+		logger.Info("not found")
+
+		w.WriteHeader(404)
+		if _, err := w.Write([]byte("Not Found")); err != nil {
+			logger.WithError(err).Infof("failed to write not found")
+		}
+
 	})
 	return mux
 }
