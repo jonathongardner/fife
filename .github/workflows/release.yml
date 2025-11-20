@@ -7,7 +7,7 @@ on:
       - 'v*'
 name: release-please
 jobs:
-  release-please:
+  create-release:
     runs-on: ubuntu-latest
     steps:
       - name: Extract Tag Name
@@ -25,7 +25,7 @@ jobs:
           for os in linux; do
             for arch in amd64 arm64; do
               echo -e "$os $arch\n"
-              GOOS=$os GOARCH=$arch go build -o fife-$GOOS-$arch
+              GOOS=$os GOARCH=$arch go build -o fife-$os-$arch
             done
           done
       - name: Get last version
@@ -40,4 +40,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.NAME }}
+  push-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest #,ghcr.io/${{ github.repository }}:${{ steps.versions.outputs.current }} # ${{ github.sha }}
+          
         
