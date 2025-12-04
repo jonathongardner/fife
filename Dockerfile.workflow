@@ -5,7 +5,7 @@ ARG TARGETOS
 ARG TARGETARCH
 
 # Copy the built binary from the builder stage
-COPY fife-$TARGETOS-$TARGETARCH .
+COPY fife-$TARGETOS-$TARGETARCH fife
 
 # Expose the port your application listens on (optional, but good practice)
 EXPOSE 80
