@@ -86,12 +86,12 @@ func reverseMuxProxy(cfg config, subFS fs.FS) *mux.Router {
 	for _, s := range cfg.Services {
 		logrus.WithFields(
 			logrus.Fields{
-				"route":    s.proxyOnHost,
+				"route":    s.proxyOn.host,
 				"proxy-to": s.proxyToUrl.String(),
 			},
 		).Info("Added proxy route")
 
-		r.Host(s.proxyOnHost).PathPrefix("/").Handler(s.ProxyTo())
+		r.Host(s.proxyOn.host).PathPrefix("/").Handler(s.ProxyTo())
 		// http.StripPrefix(path, s.ProxyTo()
 	}
 

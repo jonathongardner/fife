@@ -18,5 +18,3 @@ fife reverse-proxy
 ## TODO
 - fix github action (docker?)
 - add /etc/fife/fife.yaml as default config location
-- add simple default page showing config
-- add globing/path 

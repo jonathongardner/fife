@@ -7,13 +7,19 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 
 	yaml "gopkg.in/yaml.v3"
 )
 
 type simpleUrl struct {
-	host string
-	path string
+	schema string
+	host   string
+}
+
+// return schema + host
+func (su simpleUrl) url() string {
+	return su.schema + su.host
 }
 
 func LoadConfig(file string) (config, error) {
@@ -55,11 +61,11 @@ func (c config) validate() (err error) {
 	names := make(map[string]int)
 
 	for i, s := range c.Services {
-		li, ok := names[s.proxyOnHost]
+		li, ok := names[s.proxyOn.host]
 		if ok {
 			err = errors.Join(err, fmt.Errorf("duplicate name %d and %d", li, i))
 		} else {
-			names[s.proxyOnHost] = i
+			names[s.proxyOn.host] = i
 		}
 	}
 
@@ -68,7 +74,7 @@ func (c config) validate() (err error) {
 
 type proxyServices struct {
 	// Service the server to proxy to
-	proxyOnHost string // foo.cool.dev, cool.something.dev, etc
+	proxyOn simpleUrl // foo.cool.dev, cool.something.dev, etc
 	// the Name of the server to redirect on (the first will be the default)
 	proxyToUrl *url.URL // host to redirect on
 }
@@ -93,7 +99,13 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 	if psI.ProxyOn == "" {
 		return fmt.Errorf("on cant be blank")
 	}
-	ps.proxyOnHost = psI.ProxyOn
+
+	ps.proxyOn.schema = "http://"
+	ps.proxyOn.host = strings.TrimPrefix(psI.ProxyOn, "http://")
+	if strings.HasPrefix(psI.ProxyOn, "https://") {
+		ps.proxyOn.schema = "https://"
+		ps.proxyOn.host = strings.TrimPrefix(psI.ProxyOn, "https://")
+	}
 
 	if psI.ProxyTo == "" {
 		return fmt.Errorf("to cant be blank")
@@ -109,10 +121,12 @@ func (ps *proxyServices) MarshalJSON() ([]byte, error) {
 	var psI struct {
 		// the Name of the server to redirect on (the first will be the default)
 		ProxyOn string `json:"on"` // foo.cool.dev, cool.something.dev, etc
+		Name    string `json:"name"`
 		// Service the server to proxy to
 		ProxyTo string `json:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
 	}
-	psI.ProxyOn = ps.proxyOnHost
+	psI.ProxyOn = ps.proxyOn.url()
+	psI.Name = ps.proxyOn.host
 	psI.ProxyTo = ps.proxyToUrl.String()
 
 	return json.Marshal(&psI)
