@@ -2,20 +2,31 @@ package server
 
 import (
 	"context"
+	"embed"
+	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
-	"net/http/httputil"
-	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
+	"github.com/jonathongardner/fife/logger"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
 
+//go:embed static
+var staticFiles embed.FS
+
 func NewReverseProxy(ctx context.Context, cfg config) error {
+	subFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return fmt.Errorf("couldnt create static fs: %w", err)
+	}
+
 	server := &http.Server{
 		Addr:    cfg.BindHost,
-		Handler: reverseMuxProxy(cfg),
+		Handler: reverseMuxProxy(cfg, subFS),
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -45,54 +56,64 @@ func NewReverseProxy(ctx context.Context, cfg config) error {
 	return g.Wait()
 }
 
-func reverseMuxProxy(cfg config) *http.ServeMux {
-	var defProx *httputil.ReverseProxy
-	// Define the target backend server URL
-	proxies := make(map[string]*httputil.ReverseProxy)
-	for _, svr := range cfg.Services {
+func reverseMuxProxy(cfg config, subFS fs.FS) *mux.Router {
+	logrus.Infof("Creating server with %d proxies", len(cfg.Services))
+	r := mux.NewRouter()
+	r.Use(loggingMiddleware)
+
+	// Create an info route
+	if cfg.InfoHost != "" {
 		logrus.WithFields(
 			logrus.Fields{
-				"name": svr.name,
-				"host": svr.host.String(),
+				"route": cfg.InfoHost,
 			},
-		).Info("Added proxy")
-		proxies[svr.name] = httputil.NewSingleHostReverseProxy(svr.host)
-		if svr.deflt {
-			defProx = proxies[svr.name]
-		}
+		).Info("Adding info route")
+
+		r.Host(cfg.InfoHost).Path("/api/v1/services").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			err := json.NewEncoder(w).Encode(cfg)
+			if err != nil {
+				http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+				return
+			}
+
+			w.WriteHeader(http.StatusOK)
+		})
+		r.Host(cfg.InfoHost).Handler(http.FileServer(http.FS(subFS)))
 	}
 
-	// Create a new ReverseProxy instance
-	logrus.Infof("Creating server with %d proxies", len(proxies))
-	mux := http.NewServeMux()
-	// Define the handler function for the reverse proxy
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		host := strings.SplitN(r.Host, ":", 2)[0]
-		logger := logrus.WithFields(logrus.Fields{
-			"originalHost": r.Host,
-			"host":         host,
-			"path":         r.URL.Path,
-			"remoteAdd":    r.RemoteAddr,
-		})
-		logger.Info("request")
+	// Create proxy route
+	for _, s := range cfg.Services {
+		logrus.WithFields(
+			logrus.Fields{
+				"route":    s.proxyOnHost,
+				"proxy-to": s.proxyToUrl.String(),
+			},
+		).Info("Added proxy route")
 
-		proxy, ok := proxies[host]
-		if ok {
-			logger.Infof("using %s", host)
-			proxy.ServeHTTP(w, r)
+		r.Host(s.proxyOnHost).PathPrefix("/").Handler(s.ProxyTo())
+		// http.StripPrefix(path, s.ProxyTo()
+	}
+
+	// Fallback function
+	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logger := logger.ContextLogger(r.Context())
+		logger.Infof("unknown route")
+
+		w.WriteHeader(418)
+		_, err := w.Write([]byte("Im a teapot... sorry"))
+		if err != nil {
+			logger.WithError(err).Warn("couldnt write response")
 		}
-		if defProx != nil {
-			logger.Info("using default")
-			defProx.ServeHTTP(w, r)
-		}
-
-		logger.Info("not found")
-
-		w.WriteHeader(404)
-		if _, err := w.Write([]byte("Not Found")); err != nil {
-			logger.WithError(err).Infof("failed to write not found")
-		}
-
 	})
-	return mux
+
+	return r
 }
+
+// logger := logrus.WithFields(logrus.Fields{
+// 	"originalHost": r.Host,
+// 	"host":         host,
+// 	"path":         r.URL.Path,
+// 	"remoteAdd":    r.RemoteAddr,
+// })
+// logger.Info("request")

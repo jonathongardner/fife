@@ -1,13 +1,20 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http/httputil"
 	"net/url"
 	"os"
 
 	yaml "gopkg.in/yaml.v3"
 )
+
+type simpleUrl struct {
+	host string
+	path string
+}
 
 func LoadConfig(file string) (config, error) {
 	var config config
@@ -39,28 +46,20 @@ func LoadConfig(file string) (config, error) {
 }
 
 type config struct {
-	Services []proxyServices `yaml:"services"`
-	BindHost string          `yaml:"bindHost"`
+	BindHost string           `yaml:"bindHost",json:"bindHost"`
+	InfoHost string           `yaml:"infoHost",json:"infoHost"`
+	Services []*proxyServices `yaml:"services",json:"services"`
 }
 
 func (c config) validate() (err error) {
 	names := make(map[string]int)
-	defltInt := -1
 
 	for i, s := range c.Services {
-		li, ok := names[s.name]
+		li, ok := names[s.proxyOnHost]
 		if ok {
 			err = errors.Join(err, fmt.Errorf("duplicate name %d and %d", li, i))
 		} else {
-			names[s.name] = i
-		}
-
-		if s.deflt {
-			if defltInt == -1 {
-				defltInt = i
-			} else {
-				err = errors.Join(err, fmt.Errorf("multiple defaults %d and %d", li, i))
-			}
+			names[s.proxyOnHost] = i
 		}
 	}
 
@@ -68,11 +67,10 @@ func (c config) validate() (err error) {
 }
 
 type proxyServices struct {
-	// Host the server to proxy to
-	host *url.URL // 192.1.1.1:3000, 192.1.1.1:4000
+	// Service the server to proxy to
+	proxyOnHost string // foo.cool.dev, cool.something.dev, etc
 	// the Name of the server to redirect on (the first will be the default)
-	name  string // foo.cool.dev, cool.something.dev, etc
-	deflt bool
+	proxyToUrl *url.URL // host to redirect on
 }
 
 func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
@@ -81,11 +79,10 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	var psI struct {
-		// Host the server to proxy to
-		Host string `yaml:"host"` // 192.1.1.1:3000, 192.1.1.1:4000
 		// the Name of the server to redirect on (the first will be the default)
-		Name    string `yaml:"name"` // foo.cool.dev, cool.something.dev, etc
-		Default bool   `yaml:"default"`
+		ProxyOn string `yaml:"on"` // foo.cool.dev, cool.something.dev, etc
+		// Service the server to proxy to
+		ProxyTo string `yaml:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
 	}
 
 	err := value.Decode(&psI)
@@ -93,20 +90,35 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 
-	if psI.Name == "" {
-		return fmt.Errorf("name cant be blank")
+	if psI.ProxyOn == "" {
+		return fmt.Errorf("on cant be blank")
 	}
-	ps.name = psI.Name
+	ps.proxyOnHost = psI.ProxyOn
 
-	if psI.Host == "" {
-		return fmt.Errorf("host cant be blank")
+	if psI.ProxyTo == "" {
+		return fmt.Errorf("to cant be blank")
 	}
-	ps.host, err = url.Parse(psI.Host) // Replace with your backend server
+	ps.proxyToUrl, err = url.Parse(psI.ProxyTo) // Replace with your backend server
 	if err != nil {
-		return fmt.Errorf("error parsing host: %w", err)
+		return fmt.Errorf("error parsing to host: %w", err)
 	}
-
-	ps.deflt = psI.Default
 
 	return nil
+}
+func (ps *proxyServices) MarshalJSON() ([]byte, error) {
+	var psI struct {
+		// the Name of the server to redirect on (the first will be the default)
+		ProxyOn string `json:"on"` // foo.cool.dev, cool.something.dev, etc
+		// Service the server to proxy to
+		ProxyTo string `json:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
+	}
+	psI.ProxyOn = ps.proxyOnHost
+	psI.ProxyTo = ps.proxyToUrl.String()
+
+	return json.Marshal(&psI)
+}
+
+// Proxy returns the http reverse proxy
+func (ps *proxyServices) ProxyTo() *httputil.ReverseProxy {
+	return httputil.NewSingleHostReverseProxy(ps.proxyToUrl)
 }
