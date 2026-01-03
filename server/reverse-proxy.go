@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jonathongardner/fife/app"
 	"github.com/jonathongardner/fife/logger"
 	"github.com/jonathongardner/fife/wol"
 	"github.com/sirupsen/logrus"
@@ -70,32 +71,42 @@ func reverseMuxProxy(cfg config, subFS fs.FS) *mux.Router {
 			},
 		).Info("Adding info route")
 
+		r.Host(cfg.InfoHost).Path("/api/v1/version").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			if _, err := w.Write([]byte(app.Version)); err != nil {
+				http.Error(w, "Error writing response", http.StatusInternalServerError)
+				return
+			}
+
+		})
+
 		r.Host(cfg.InfoHost).Path("/api/v1/services").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
 			if err := json.NewEncoder(w).Encode(cfg); err != nil {
 				http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
 				return
 			}
 
-			w.WriteHeader(http.StatusOK)
 		})
 
 		r.Host(cfg.InfoHost).Path("/api/v1/services/{id}/wol").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			id := mux.Vars(r)["id"]
 			for _, s := range cfg.Services {
 				if s.id == id && s.wolInfo != nil {
-					err := s.wolInfo.WakeUp()
+					err := s.wolInfo.WakeUp(r.Context())
 					if err != nil {
 						http.Error(w, "Error waking up", http.StatusInternalServerError)
 						return
 					}
 
 					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
 					if err := json.NewEncoder(w).Encode(s); err != nil {
 						http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
 						return
 					}
-					w.WriteHeader(http.StatusOK)
 					return
 				}
 			}

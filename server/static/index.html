@@ -17,7 +17,7 @@
                 <strong>Error:</strong> {{ error }}
             </div>
             <h1 class="title">
-                Fife Info
+                Fife Info ({{ version }})
             </h1>
             <nav class="panel">
                 <p class="panel-heading">Services</p>
@@ -58,11 +58,13 @@
             data() {
                 return {
                     services: [],
+                    version: '',
                     error: null,
                 };
             },
             async mounted() {
-                await this.getServices()
+                await this.getServices();
+                await this.getVersion();
             },
             methods: {
                 async getServices() {
@@ -74,9 +76,21 @@
                             throw new Error(`${response.status}: ${errorText}`);
                         }
                         const data = await response.json();
-                        this.services = data.Services;
+                        this.services = data.services;
                     } catch (error) {
                         this.error = error.toString();
+                    }
+                },
+                async getVersion() {
+                    try {
+                        const response = await fetch('/api/v1/version');
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            throw new Error(`${response.status}: ${errorText}`);
+                        }
+                        this.version = await response.text();
+                    } catch (error) {
+                        console.error('Error fetching version:', error);
                     }
                 },
                 formatDate(date) {

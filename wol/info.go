@@ -1,6 +1,7 @@
 package wol
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -42,11 +43,11 @@ func (wi *Info) invalid() error {
 }
 
 // WakeUp make wol to mac. Updates LastWol and nextWol
-func (wi *Info) WakeUp() error {
+func (wi *Info) WakeUp(ctx context.Context) error {
 	if err := wi.invalid(); err != nil {
 		return fmt.Errorf("invalid wol info: %w", err)
 	}
-	if err := Run(wi.Mac); err != nil {
+	if err := Run(ctx, wi.Mac); err != nil {
 		return fmt.Errorf("error running wake up: %w", err)
 	}
 	wi.LastWol = time.Now()

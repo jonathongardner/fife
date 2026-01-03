@@ -4,12 +4,14 @@ package wol
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"regexp"
 
+	"github.com/jonathongardner/fife/logger"
 	"github.com/sirupsen/logrus"
 )
 
@@ -76,7 +78,9 @@ func (mp *MagicPacket) Marshal() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Run(macAddr string) (err error) {
+func Run(ctx context.Context, macAddr string) (err error) {
+	lgr := logger.ContextLogger(ctx)
+
 	var localAddr *net.UDPAddr
 
 	bcastAddr := fmt.Sprintf("%s:%s", "255.255.255.255", "9")
@@ -97,6 +101,10 @@ func Run(macAddr string) (err error) {
 		return fmt.Errorf("error marshaling magic packet: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context error (1): %w", err)
+	}
+
 	// Grab a UDP connection to send our packet of bytes.
 	conn, err := net.DialUDP("udp", localAddr, udpAddr)
 	if err != nil {
@@ -108,15 +116,24 @@ func Run(macAddr string) (err error) {
 		}
 	}()
 
-	logrus.Infof("Attempting to send a magic packet to MAC %s... Broadcasting to: %s", macAddr, bcastAddr)
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("context error (2): %w", err)
+	}
+
 	n, err := conn.Write(bs)
 	if err == nil && n != 102 {
 		err = fmt.Errorf("magic packet sent was %d bytes (expected 102 bytes sent)", n)
 	}
+	lgr.WithFields(
+		logrus.Fields{
+			"mac":            macAddr,
+			"broadcastingTo": bcastAddr,
+			"error":          err,
+		},
+	).Infof("Sent magic packet")
 	if err != nil {
 		return fmt.Errorf("error sending magic packet: %w", err)
 	}
 
-	logrus.Infof("Magic packet sent successfully to %s", macAddr)
 	return nil
 }

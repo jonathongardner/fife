@@ -54,9 +54,9 @@ func LoadConfig(file string) (config, error) {
 }
 
 type config struct {
-	BindHost string           `yaml:"bindHost",json:"bindHost"`
-	InfoHost string           `yaml:"infoHost",json:"infoHost"`
-	Services []*proxyServices `yaml:"services",json:"services"`
+	BindHost string           `yaml:"bindHost" json:"bindHost"`
+	InfoHost string           `yaml:"infoHost" json:"infoHost"`
+	Services []*proxyServices `yaml:"services" json:"services"`
 }
 
 func (c config) validate() (err error) {
