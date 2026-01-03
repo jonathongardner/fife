@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
+	"github.com/jonathongardner/fife/wol"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -72,11 +74,15 @@ func (c config) validate() (err error) {
 	return
 }
 
+// proxyServives is a struct that contains proxy on (the hostname) and proxy to (the request to proxy to).
+// It also contains WOL info which can be used to auto send WOL if needed.
 type proxyServices struct {
+	id string
 	// Service the server to proxy to
 	proxyOn simpleUrl // foo.cool.dev, cool.something.dev, etc
 	// the Name of the server to redirect on (the first will be the default)
 	proxyToUrl *url.URL // host to redirect on
+	wolInfo    *wol.Info
 }
 
 func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
@@ -84,11 +90,16 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 		return fmt.Errorf("unsupported type: %v", value.Kind)
 	}
 
+	// setup default values
+	ps.id = uuid.New().String()
+
+	// Create struct to decode to
 	var psI struct {
 		// the Name of the server to redirect on (the first will be the default)
 		ProxyOn string `yaml:"on"` // foo.cool.dev, cool.something.dev, etc
 		// Service the server to proxy to
-		ProxyTo string `yaml:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
+		ProxyTo string    `yaml:"to"` // http://192.1.1.1:3000, https://192.1.1.1:4000
+		WolInfo *wol.Info `yaml:"wol,omitempty"`
 	}
 
 	err := value.Decode(&psI)
@@ -96,6 +107,7 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 
+	// set proxy info
 	if psI.ProxyOn == "" {
 		return fmt.Errorf("on cant be blank")
 	}
@@ -115,19 +127,35 @@ func (ps *proxyServices) UnmarshalYAML(value *yaml.Node) error {
 		return fmt.Errorf("error parsing to host: %w", err)
 	}
 
+	// set wol info (if needed)
+	if psI.WolInfo != nil {
+		ps.wolInfo = psI.WolInfo
+		if err := psI.WolInfo.Setup(); err != nil {
+			return fmt.Errorf("invalid wol info: %w", err)
+		}
+	}
+
 	return nil
 }
+
+// MashalJSON format for json
 func (ps *proxyServices) MarshalJSON() ([]byte, error) {
 	var psI struct {
+		Id string `json:"id"`
 		// the Name of the server to redirect on (the first will be the default)
 		ProxyOn string `json:"on"` // foo.cool.dev, cool.something.dev, etc
 		Name    string `json:"name"`
 		// Service the server to proxy to
-		ProxyTo string `json:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
+		ProxyTo string    `json:"to"` // 192.1.1.1:3000, 192.1.1.1:4000
+		WolInfo *wol.Info `json:"wol,omitempty"`
 	}
+	psI.Id = ps.id
 	psI.ProxyOn = ps.proxyOn.url()
 	psI.Name = ps.proxyOn.host
 	psI.ProxyTo = ps.proxyToUrl.String()
+	if ps.wolInfo != nil {
+		psI.WolInfo = ps.wolInfo
+	}
 
 	return json.Marshal(&psI)
 }

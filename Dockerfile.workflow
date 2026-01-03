@@ -10,7 +10,5 @@ COPY fife-$TARGETOS-$TARGETARCH fife
 # Expose the port your application listens on (optional, but good practice)
 EXPOSE 80
 
-WORKDIR ["/data/"]
-
 # Define the command to run when the container starts
 ENTRYPOINT ["/fife"]

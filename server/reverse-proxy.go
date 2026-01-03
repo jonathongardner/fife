@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/jonathongardner/fife/logger"
+	"github.com/jonathongardner/fife/wol"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )
@@ -71,13 +72,35 @@ func reverseMuxProxy(cfg config, subFS fs.FS) *mux.Router {
 
 		r.Host(cfg.InfoHost).Path("/api/v1/services").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode(cfg)
-			if err != nil {
+			if err := json.NewEncoder(w).Encode(cfg); err != nil {
 				http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
 				return
 			}
 
 			w.WriteHeader(http.StatusOK)
+		})
+
+		r.Host(cfg.InfoHost).Path("/api/v1/services/{id}/wol").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := mux.Vars(r)["id"]
+			for _, s := range cfg.Services {
+				if s.id == id && s.wolInfo != nil {
+					err := s.wolInfo.WakeUp()
+					if err != nil {
+						http.Error(w, "Error waking up", http.StatusInternalServerError)
+						return
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					if err := json.NewEncoder(w).Encode(s); err != nil {
+						http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+						return
+					}
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+			}
+
+			http.Error(w, "Service not found", http.StatusNotFound)
 		})
 		r.Host(cfg.InfoHost).Handler(http.FileServer(http.FS(subFS)))
 	}
@@ -91,7 +114,7 @@ func reverseMuxProxy(cfg config, subFS fs.FS) *mux.Router {
 			},
 		).Info("Added proxy route")
 
-		r.Host(s.proxyOn.host).PathPrefix("/").Handler(s.ProxyTo())
+		r.Host(s.proxyOn.host).PathPrefix("/").Handler(wol.Middleware(s.wolInfo, s.ProxyTo()))
 		// http.StripPrefix(path, s.ProxyTo()
 	}
 
