@@ -9,9 +9,9 @@ import (
 )
 
 var reverseProx = &cli.Command{
-	Name:    "reverse-proxy",
-	Aliases: []string{"rp"},
-	Usage:   "Start a reverse proxy",
+	Name:    "wol-server",
+	Aliases: []string{"ws"},
+	Usage:   "Start a WOL server",
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:    "config",
@@ -26,7 +26,7 @@ var reverseProx = &cli.Command{
 			return fmt.Errorf("error loading config %w", err)
 		}
 
-		if err := server.NewReverseProxy(ctx, cfg); err != nil {
+		if err := server.NewWolServer(ctx, cfg); err != nil {
 			return fmt.Errorf("error with server %w", err)
 		}
 

@@ -83,12 +83,6 @@ func Run(ctx context.Context, macAddr string) (err error) {
 
 	var localAddr *net.UDPAddr
 
-	bcastAddr := fmt.Sprintf("%s:%s", "255.255.255.255", "9")
-	udpAddr, err := net.ResolveUDPAddr("udp", bcastAddr)
-	if err != nil {
-		return fmt.Errorf("error resolving udp address: %w", err)
-	}
-
 	// Build the magic packet.
 	mp, err := New(macAddr)
 	if err != nil {
@@ -101,38 +95,47 @@ func Run(ctx context.Context, macAddr string) (err error) {
 		return fmt.Errorf("error marshaling magic packet: %w", err)
 	}
 
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context error (1): %w", err)
-	}
-
-	// Grab a UDP connection to send our packet of bytes.
-	conn, err := net.DialUDP("udp", localAddr, udpAddr)
-	if err != nil {
-		return fmt.Errorf("error dialing udp: %w", err)
-	}
-	defer func() {
-		if cerr := conn.Close(); cerr != nil {
-			err = errors.Join(err, fmt.Errorf("error closing connection: %w", cerr))
+	for _, p := range []string{"7", "9"} {
+		bcastAddr := fmt.Sprintf("%s:%s", "255.255.255.255", p)
+		udpAddr, err := net.ResolveUDPAddr("udp", bcastAddr)
+		if err != nil {
+			return fmt.Errorf("error resolving udp address: %w", err)
 		}
-	}()
 
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context error (2): %w", err)
-	}
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error (1): %w", err)
+		}
 
-	n, err := conn.Write(bs)
-	if err == nil && n != 102 {
-		err = fmt.Errorf("magic packet sent was %d bytes (expected 102 bytes sent)", n)
-	}
-	lgr.WithFields(
-		logrus.Fields{
-			"mac":            macAddr,
-			"broadcastingTo": bcastAddr,
-			"error":          err,
-		},
-	).Infof("Sent magic packet")
-	if err != nil {
-		return fmt.Errorf("error sending magic packet: %w", err)
+		// Grab a UDP connection to send our packet of bytes.
+		conn, err := net.DialUDP("udp", localAddr, udpAddr)
+		if err != nil {
+			return fmt.Errorf("error dialing udp: %w", err)
+		}
+		defer func() {
+			if cerr := conn.Close(); cerr != nil {
+				err = errors.Join(err, fmt.Errorf("error closing connection: %w", cerr))
+			}
+		}()
+
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error (2): %w", err)
+		}
+
+		n, err := conn.Write(bs)
+		if err == nil && n != 102 {
+			err = fmt.Errorf("magic packet sent was %d bytes (expected 102 bytes sent)", n)
+		}
+
+		lgr.WithFields(
+			logrus.Fields{
+				"mac":            macAddr,
+				"broadcastingTo": bcastAddr,
+				"error":          err,
+			},
+		).Infof("Sent magic packet")
+		if err != nil {
+			return fmt.Errorf("error sending magic packet: %w", err)
+		}
 	}
 
 	return nil

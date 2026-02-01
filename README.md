@@ -1,18 +1,18 @@
 # Fife
-A simple go reverse proxy. 
+A simple go server for sending WOL packetsS. 
 
 ## Example
 ```yaml
 # ./.fife.yaml
 bindHost: ":8080"
 services:
-  - name: foo.localhost
-    host: http://192.168.1.2:80
-  - name: bar.localhost
-    host: http://192.168.1.3:3000
+  foo:
+    to: foo.com
+    wol:
+      mac: aa:bb:cc:dd:ee
 ```
 ```
-fife reverse-proxy
+fife wol-server
 ```
 
 ## TODO
